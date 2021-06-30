@@ -1,9 +1,10 @@
-function [A] = oocLU_nopiv( Ainput, nb, incore_size )
+function [A] = oocLU_nopiv( n, Ainput, nb, incore_size )
 % [A] = oocLU_nopiv( n, Ainput, nb, memsize )
 % perform out of out of core LU (nopivot) factorization
 % using approximately incore_size amount of in-core memory
 %
 
+idebug = 1;
 % want incore memory size to be multiple of nb width column panels
 incore_blocks = floor( incore_size/(n*nb) ); 
 
@@ -101,6 +102,10 @@ for jstarty=1:n:y_width,
     i2 = n;
     mm = i2-i1+1;
     nn = jsizey;
+    if (idebug >= 1),
+        disp(sprintf('mm=%g, nn=%g ', ...
+                      mm,    nn));
+    end;
     Y(i1:i2, 1:nn) = incLU_nopiv( mm,nn,nb, Y(i1:i2, 1:nn) );
 
     % --------------------------------------
