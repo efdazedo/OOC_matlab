@@ -2,6 +2,13 @@ function [A] = incLU_nopiv(m,n,nb, Ainput)
 % [A] = incLU_nopiv(m,n,nb, Ainput)
 % perform in-core LU (nopiv) factorization
 %
+use_transpose_Upart = 1;
+
+
+% --------------------------------
+% make a copy only for matlab
+% C++ code can reuse storage for A
+% --------------------------------
 A = Ainput;
 
 isok = (m >= n);
@@ -61,7 +68,12 @@ for jstart=1:nb:n,
 %   or use transpose storage
 %   -------------------------------
     Lpart(1:isize,1:ksize) = A(i1:i2,k1:k2);
-    Upart(1:ksize,1:jsize) = A(k1:k2,j1:j2);
+
+    if (use_transpose_Upart),
+      Upart(1:jsize,1:ksize) = transpose(A(k1:k2,j1:j2));
+    else 
+      Upart(1:ksize,1:jsize) = A(k1:k2,j1:j2);
+    end;
 
 
 %     ------------------------------------------
@@ -70,8 +82,13 @@ for jstart=1:nb:n,
 %           A( i1:i2, k1:k2) * A( k1:k2, j1:j2);
 %     ------------------------------------------
 
-    A( i1:i2, j1:j2) = A(i1:i2, j1:j2) - ...
+    if (use_transpose_Upart),
+      A( i1:i2, j1:j2) = A(i1:i2, j1:j2) - ...
+          Lpart( 1:isize, 1:ksize) * transpose(Upart( 1:jsize,1:ksize ));
+    else
+      A( i1:i2, j1:j2) = A(i1:i2, j1:j2) - ...
           Lpart( 1:isize, 1:ksize) * Upart( 1:ksize, 1:jsize );
+    end;
 
 
     % -----------------------------------------

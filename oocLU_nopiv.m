@@ -5,7 +5,7 @@ function [A] = oocLU_nopiv( n, Ainput, nb, incore_size )
 %
 
 idebug = 1;
-use_transpose_U12 = 1;
+use_transpose_Upart = 1;
 
 % ---------------------
 % want incore memory size to be multiple of nb width column panels
@@ -93,35 +93,39 @@ for jstarty=1:y_width:n,
         Uk = triu( Dk );
 
         % ---------------
-        % L11 * U12 = A12
-        % or U12 = L11\A12
+        % L11 * Upart = A12
+        % or Upart = L11\A12
         % ---------------
         Y( istartx:iendx, 1:jsizey) = Lk(1:isizex,1:jsizex)\Y( istartx:iendx, 1:jsizey);
 
         % ---------------------------------------------
         % may need to copy to fp16 or transpose storage
         % ---------------------------------------------
-        if (use_transpose_U12),
-          U12 = zeros( jsizey,jsizex );
-          U12( 1:jsizey, 1:jsizex) = transpose( Y(istartx:iendx,1:jsizey) );
+        if (use_transpose_Upart),
+          Upart = zeros( jsizey,jsizex );
+          Upart( 1:jsizey, 1:jsizex) = transpose( Y(istartx:iendx,1:jsizey) );
         else
-          U12 = zeros(jsizex,jsizey);
-          U12( 1:jsizex,1:jsizey) = Y( istartx:iendx, 1:jsizey);
+          Upart = zeros(jsizex,jsizey);
+          Upart( 1:jsizex,1:jsizey) = Y( istartx:iendx, 1:jsizey);
         end;
 
 
         % -----------
         % GEMM update
         % may need to copy to fp16 or transpose storage 
+        % in Lpart or Upart
         % -----------
         i1 = (iendx+1);
         i2 = n;
-        if (use_transpose_U12),
+        isize = (i2-i1+1);
+
+        Lpart(1:isize,1:jsizex) = X( i1:i2, 1:jsizex);
+        if (use_transpose_Upart),
           Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - ...
-                 X( i1:i2, 1:jsizex) * transpose(U12( 1:jsizey, 1:jsizex));
+                 Lpart( 1:isize, 1:jsizex) * transpose(Upart( 1:jsizey, 1:jsizex));
         else
           Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - ...
-                 X( i1:i2, 1:jsizex) * U12( 1:jsizex, 1:jsizey);
+                 Lpart( 1:isize, 1:jsizex) * Upart( 1:jsizex, 1:jsizey);
         end;
 
     end;
