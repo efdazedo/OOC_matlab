@@ -5,14 +5,18 @@ function [A] = oocLU_nopiv( n, Ainput, nb, incore_size )
 %
 
 idebug = 1;
+use_transpose_U12 = 1;
+
+% ---------------------
 % want incore memory size to be multiple of nb width column panels
+% ---------------------
 incore_blocks = floor( incore_size/(n*nb) ); 
 
 % ------------
 % set width of X-panel to get sufficient performance in I/O and GEMM
 % the rest of memory dedicated to Y-panel
 % ------------
-x_blocks = 2;
+x_blocks = 1;
 y_blocks = incore_blocks - x_blocks;
 
 % ----------------------
@@ -37,6 +41,10 @@ end;
 % ---------------------
 x_width = (x_blocks*nb);
 y_width = (y_blocks*nb);
+if (idebug >= 1),
+  disp(sprintf('n=%d, incore_size=%d, nb=%d, x_width=%d, y_width=%d', ...
+                n,    incore_size,    nb,    x_width,    y_width));
+end;
 Y = zeros( n, y_width);
 X = zeros( n, x_width);
 
@@ -70,7 +78,7 @@ for jstarty=1:y_width:n,
         % diagonal block in X panel
         % -------------------------
 
-        if (idebug >= 1),
+        if (idebug >= 2),
          disp(sprintf('jstartx=%d, jendx=%d', ...
                        jstartx,    jendx ));
 
@@ -88,8 +96,18 @@ for jstarty=1:y_width:n,
         % L11 * U12 = A12
         % or U12 = L11\A12
         % ---------------
-        U12 = zeros(jsizex,jsizey);
-        U12(1:jsizex,1:jsizey) = Lk(1:isizex,1:jsizex)\Y( istartx:iendx, 1:jsizey);
+        Y( istartx:iendx, 1:jsizey) = Lk(1:isizex,1:jsizex)\Y( istartx:iendx, 1:jsizey);
+
+        % ---------------------------------------------
+        % may need to copy to fp16 or transpose storage
+        % ---------------------------------------------
+        if (use_transpose_U12),
+          U12 = zeros( jsizey,jsizex );
+          U12( 1:jsizey, 1:jsizex) = transpose( Y(istartx:iendx,1:jsizey) );
+        else
+          U12 = zeros(jsizex,jsizey);
+          U12( 1:jsizex,1:jsizey) = Y( istartx:iendx, 1:jsizey);
+        end;
 
 
         % -----------
@@ -98,7 +116,13 @@ for jstarty=1:y_width:n,
         % -----------
         i1 = (iendx+1);
         i2 = n;
-        Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - X( i1:i2, 1:jsizex) * U12( 1:jsizex, 1:jsizey);
+        if (use_transpose_U12),
+          Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - ...
+                 X( i1:i2, 1:jsizex) * transpose(U12( 1:jsizey, 1:jsizex));
+        else
+          Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - ...
+                 X( i1:i2, 1:jsizex) * U12( 1:jsizex, 1:jsizey);
+        end;
 
     end;
 
@@ -110,7 +134,7 @@ for jstarty=1:y_width:n,
     i2 = n;
     mm = i2-i1+1;
     nn = jsizey;
-    if (idebug >= 1),
+    if (idebug >= 2),
         disp(sprintf('jstarty=%d, n=%d, i1=%d, i2=%d', ...
                       jstartx,    n,    i1,    i2 ));
         disp(sprintf('mm=%d, nn=%d ', ...

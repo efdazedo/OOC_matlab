@@ -52,8 +52,26 @@ for jstart=1:nb:n,
     j1 = (jend+1); j2 = n;
     k1 = jstart; k2 = jend;
 
+    isize = (i2-i1+1);
+    jsize = (j2-j1+1);
+    ksize = (k2-k1+1);
+
+%   -------------------------------
+%   may use fp16 in Lpart and Upart
+%   or use transpose storage
+%   -------------------------------
+    Lpart(1:isize,1:ksize) = A(i1:i2,k1:k2);
+    Upart(1:ksize,1:jsize) = A(k1:k2,j1:j2);
+
+
+%     ------------------------------------------
+%     equivalent to 
+%     A( i1:i2, j1:j2) = A(i1:i2, j1:j2) - ...
+%           A( i1:i2, k1:k2) * A( k1:k2, j1:j2);
+%     ------------------------------------------
+
     A( i1:i2, j1:j2) = A(i1:i2, j1:j2) - ...
-          A( i1:i2, k1:k2) * A( k1:k2, j1:j2);
+          Lpart( 1:isize, 1:ksize) * Upart( 1:ksize, 1:jsize );
 
 
     % -----------------------------------------
