@@ -40,7 +40,7 @@ y_width = (y_blocks*nb);
 Y = zeros( n, y_width);
 X = zeros( n, x_width);
 
-for jstarty=1:n:y_width,
+for jstarty=1:y_width:n,
     jendy = min(n, jstarty + y_width-1);
     jsizey = (jendy - jstarty + 1);
 
@@ -52,7 +52,7 @@ for jstarty=1:n:y_width,
     % ----------------------------------------------
     % perform update from previously compute factors
     % ----------------------------------------------
-    for jstartx=1:(jstarty-1):x_width,
+    for jstartx=1:x_width:(jstarty-1),
         jendx = min( (jstarty-1), jstartx + x_width-1);
         jsizex = (jendx - jstartx + 1);
 
@@ -70,8 +70,16 @@ for jstarty=1:n:y_width,
         % diagonal block in X panel
         % -------------------------
 
+        if (idebug >= 1),
+         disp(sprintf('jstartx=%d, jendx=%d', ...
+                       jstartx,    jendx ));
+
+         disp(sprintf('isizex=%d, jsizex=%d', ...
+                       isizex,    jsizex ));
+        end;
+
         Dk = zeros(isizex,jsizex);
-        Dk(1:isizex,1:jsizex) = X( istartx:iendx, jstartx:jendx );
+        Dk(1:isizex,1:jsizex) = X( istartx:iendx, 1:jsizex );
 
         Lk = tril(Dk,-1) + eye(isizex,jsizex);
         Uk = triu( Dk );
@@ -90,7 +98,7 @@ for jstarty=1:n:y_width,
         % -----------
         i1 = (iendx+1);
         i2 = n;
-        Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - X( k1:k2, 1:jsizex) * U12( 1:jsizex, 1:jsizey);
+        Y( i1:i2, 1:jsizey) = Y(i1:i2, 1:jsizey) - X( i1:i2, 1:jsizex) * U12( 1:jsizex, 1:jsizey);
 
     end;
 
@@ -98,12 +106,14 @@ for jstarty=1:n:y_width,
     % previous updates performed
     % ready for in-core factorization of Y-panel
     % -------------------------------
-    i1 = jstartx;
+    i1 = jstarty;
     i2 = n;
     mm = i2-i1+1;
     nn = jsizey;
     if (idebug >= 1),
-        disp(sprintf('mm=%g, nn=%g ', ...
+        disp(sprintf('jstarty=%d, n=%d, i1=%d, i2=%d', ...
+                      jstartx,    n,    i1,    i2 ));
+        disp(sprintf('mm=%d, nn=%d ', ...
                       mm,    nn));
     end;
     Y(i1:i2, 1:nn) = incLU_nopiv( mm,nn,nb, Y(i1:i2, 1:nn) );

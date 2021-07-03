@@ -3,3 +3,7 @@
       incore_size = (n*n)/2;
       nb = 4;
       [ALU] = oocLU_nopiv( n, A, nb, incore_size );
+      L = tril(ALU) + eye(size(ALU));
+      U = triu(ALU);
+      err = norm( A - L * U, 1 );
+      disp(sprintf('err = %g ', err));
