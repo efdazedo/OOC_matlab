@@ -1,5 +1,5 @@
-function [A] = oocLU_nopiv( n, Ainput, nb, incore_size )
-% [A] = oocLU_nopiv( n, Ainput, nb, memsize )
+function [A] = oocLU_nopiv( n, A, nb, incore_size )
+% [A] = oocLU_nopiv( n, A, nb, memsize )
 % perform out of out of core LU (nopivot) factorization
 % using approximately incore_size amount of in-core memory
 %
@@ -19,13 +19,6 @@ incore_blocks = floor( incore_size/(n*nb) );
 x_blocks = 1;
 y_blocks = incore_blocks - x_blocks;
 
-% ----------------------
-% C++ code will over-write original matrix
-% copy only for matlab, no need to make a copy
-% in C++ code
-% ----------------------
-A = zeros(n,n);
-A(1:n,1:n) = Ainput(1:n,1:n);
 
 
 isok = (y_blocks >= x_blocks);
@@ -45,15 +38,36 @@ if (idebug >= 1),
   disp(sprintf('n=%d, incore_size=%d, nb=%d, x_width=%d, y_width=%d', ...
                 n,    incore_size,    nb,    x_width,    y_width));
 end;
+
+
+% ----------------
+% allocate storage
+% ----------------
 Y = zeros( n, y_width);
 X = zeros( n, x_width);
 
+
+% -----------------
+% temporary storage
+% -----------------
+Lpart = zeros( n, x_width);
+if (use_transpose_Upart),
+  Upart = zeros( y_width,x_width );
+else
+  Upart = zeros( x_width, y_width);
+end;
+Dk = zeros(x_width,x_width);
+
+% ----------------------------------
+% main outer loop over wide Y panels
+% ----------------------------------
 for jstarty=1:y_width:n,
     jendy = min(n, jstarty + y_width-1);
     jsizey = (jendy - jstarty + 1);
 
     % ------------------------
     % copy into in-core Y-panel matrix
+    % expensive operation, may need I/O
     % ------------------------
     Y(1:n,1:jsizey) = A(1:n, jstarty:jendy );
 
@@ -67,34 +81,44 @@ for jstarty=1:y_width:n,
         % ----------------------------------
         % copy into in-core  X-panel matrix
         % copy whole panel for simplicity and
-        % a single contigous bulk transfer
+        % as a single contigous bulk transfer
         % ----------------------------------
         istartx = jstartx;
         iendx = jendx;
         isizex = (iendx - istartx + 1);
         X(:,1:jsizex) = A(:, jstartx:jendx );
 
-        % -------------------------
-        % diagonal block in X panel
-        % -------------------------
 
         if (idebug >= 2),
          disp(sprintf('jstartx=%d, jendx=%d', ...
                        jstartx,    jendx ));
-
          disp(sprintf('isizex=%d, jsizex=%d', ...
                        isizex,    jsizex ));
         end;
 
-        Dk = zeros(isizex,jsizex);
+        % -------------------------
+        % diagonal block in X panel
+        % -------------------------
+        is_square = (isizex == jsizex);
+        if (~is_square),
+          disp(sprintf('oocLU_nopiv: isizex=%d, jsizex=%d', ...
+                                     isizex,    jsizex ));
+        end;
         Dk(1:isizex,1:jsizex) = X( istartx:iendx, 1:jsizex );
 
-        Lk = tril(Dk,-1) + eye(isizex,jsizex);
-        Uk = triu( Dk );
+        % ------------------------------
+        % C++ code can use "Dk" directly
+        % no need to form Lk or Uk
+        % ------------------------------
+        Lk = tril(Dk(1:isizex,1:jsizex),-1) + eye(isizex,jsizex);
+        Uk = triu( Dk(1:isizex,1:jsizex) );
 
         % ---------------
         % L11 * Upart = A12
         % or Upart = L11\A12
+        %
+        % C++ code perform triangular solve using
+        % TRSM(trans='NoTranspose',side='Left', uplo='Lower', diag='UnitDiagonal')
         % ---------------
         Y( istartx:iendx, 1:jsizey) = Lk(1:isizex,1:jsizex)\Y( istartx:iendx, 1:jsizey);
 
@@ -102,10 +126,8 @@ for jstarty=1:y_width:n,
         % may need to copy to fp16 or transpose storage
         % ---------------------------------------------
         if (use_transpose_Upart),
-          Upart = zeros( jsizey,jsizex );
           Upart( 1:jsizey, 1:jsizex) = transpose( Y(istartx:iendx,1:jsizey) );
         else
-          Upart = zeros(jsizex,jsizey);
           Upart( 1:jsizex,1:jsizey) = Y( istartx:iendx, 1:jsizey);
         end;
 
@@ -113,7 +135,7 @@ for jstarty=1:y_width:n,
         % -----------
         % GEMM update
         % may need to copy to fp16 or transpose storage 
-        % in Lpart or Upart
+        % in Upart (or Lpart)
         % -----------
         i1 = (iendx+1);
         i2 = n;
@@ -144,10 +166,16 @@ for jstarty=1:y_width:n,
         disp(sprintf('mm=%d, nn=%d ', ...
                       mm,    nn));
     end;
+
+    % --------------------------------
+    % perform in-core LU factorization
+    % --------------------------------
     Y(i1:i2, 1:nn) = incLU_nopiv( mm,nn,nb, Y(i1:i2, 1:nn) );
 
     % --------------------------------------
     % copy result back to out-of-core matrix
+    % as a single contiguous block
+    % may require I/O
     % --------------------------------------
     A(:, jstarty:jendy) = Y( :, 1:jsizey );
 end;

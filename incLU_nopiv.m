@@ -1,15 +1,10 @@
-function [A] = incLU_nopiv(m,n,nb, Ainput)
+function [A] = incLU_nopiv(m,n,nb, A)
 % [A] = incLU_nopiv(m,n,nb, Ainput)
 % perform in-core LU (nopiv) factorization
 %
 use_transpose_Upart = 1;
 
 
-% --------------------------------
-% make a copy only for matlab
-% C++ code can reuse storage for A
-% --------------------------------
-A = Ainput;
 
 isok = (m >= n);
 if (~isok),
