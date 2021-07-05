@@ -1,8 +1,14 @@
-function [A] = oocLU_nopiv( n, A, nb, incore_size )
-% [A] = oocLU_nopiv( n, A, nb, memsize )
+function [A,flops] = oocLU_nopiv( n, A, nb, incore_size )
+% [A,flops] = oocLU_nopiv( n, A, nb, memsize )
 % perform out of out of core LU (nopivot) factorization
 % using approximately incore_size amount of in-core memory
 %
+
+flops_LU = 0;
+flops_Lpart = 0;
+flops_Upart = 0;
+flops_gemm = 0;
+
 
 idebug = 1;
 use_transpose_Upart = 1;
@@ -121,6 +127,9 @@ for jstarty=1:y_width:n,
         % TRSM(trans='NoTranspose',side='Left', uplo='Lower', diag='UnitDiagonal')
         % ---------------
         Y( istartx:iendx, 1:jsizey) = Lk(1:isizex,1:jsizex)\Y( istartx:iendx, 1:jsizey);
+        nn = isizex;
+        nrhs = jsizey;
+        flops_Lpart = flops_Lpart + 1.0*nn*nn*nrhs;
 
         % ---------------------------------------------
         % may need to copy to fp16 or transpose storage
@@ -150,6 +159,12 @@ for jstarty=1:y_width:n,
                  Lpart( 1:isize, 1:jsizex) * Upart( 1:jsizex, 1:jsizey);
         end;
 
+        mm = (i2-i1+1);
+        nn = jsizey;
+        kk = jsizex;
+        flops_gemm = flops_gemm + 2.0*mm*nn*kk;
+
+
     end;
 
     % -------------------------------
@@ -170,7 +185,12 @@ for jstarty=1:y_width:n,
     % --------------------------------
     % perform in-core LU factorization
     % --------------------------------
-    Y(i1:i2, 1:nn) = incLU_nopiv( mm,nn,nb, Y(i1:i2, 1:nn) );
+    [Y(i1:i2, 1:nn),flops] = incLU_nopiv( mm,nn,nb, Y(i1:i2, 1:nn) );
+
+    flops_LU    = flops_LU    + flops.flops_LU;
+    flops_Lpart = flops_Lpart + flops.flops_Lpart;
+    flops_Upart = flops_Upart + flops.flops_Upart;
+    flops_gemm  = flops_gemm  + flops.flops_gemm;
 
     % --------------------------------------
     % copy result back to out-of-core matrix
@@ -180,4 +200,21 @@ for jstarty=1:y_width:n,
     A(:, jstarty:jendy) = Y( :, 1:jsizey );
 end;
 
+flops_total = flops_LU + flops_Lpart + flops_Upart + flops_gemm;
+
+flops.flops_LU = flops_LU;
+flops.flops_Lpart = flops_Lpart;
+flops.flops_Upart = flops_Upart;
+flops.flops_gemm = flops_gemm;
+flops.flops_total = flops_total;
+
+if (idebug >= 1),
+
+ disp(sprintf('flops_total=%g Gflops', flops_total/1e9 ));
+ disp(sprintf('flops_LU=%g Gflops', flops_LU/1e9 ));
+ disp(sprintf('flops_Lpart=%g Gflops', flops_Lpart/1e9 ));
+ disp(sprintf('flops_Upart=%g Gflops', flops_Upart/1e9 ));
+ disp(sprintf('flops_gemm=%g Gflops', flops_gemm/1e9 ));
+end;
+ 
 
